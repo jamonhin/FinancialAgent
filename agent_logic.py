@@ -2,7 +2,8 @@ import os
 from dotenv import load_dotenv
 from crewai import Agent, Task, Crew, Process
 from langchain_openai import ChatOpenAI
-from crewai_tools import ScrapeWebsiteTool, SerperDevTool
+# Commenting out problematic tools for now
+# from crewai_tools import ScrapeWebsiteTool, SerperDevTool
 
 # API Key Setup
 load_dotenv()
@@ -12,10 +13,10 @@ SERPER_API_KEY = os.getenv('SERPER_API_KEY')
 OPENAI_MODEL_NAME = os.getenv('OPENAI_MODEL_NAME', 'gpt-3.5-turbo') # Default to gpt-3.5-turbo
 
 if not OPENAI_API_KEY:
-    OPENAI_API_KEY = "YOUR_FALLBACK_OPENAI_KEY_HERE"
+    OPENAI_API_KEY = ""
     print("WARNING: OPENAI_API_KEY not found in environment. Using fallback/dummy key. Real analysis will likely fail or be restricted.")
 if not SERPER_API_KEY:
-    SERPER_API_KEY = "YOUR_FALLBACK_SERPER_KEY_HERE"
+    SERPER_API_KEY = ""
     print("WARNING: SERPER_API_KEY not found in environment. Using fallback/dummy key. Real analysis will likely fail or be restricted.")
 
 # Set environment variables for CrewAI and Langchain
@@ -26,20 +27,21 @@ os.environ["OPENAI_MODEL_NAME"] = OPENAI_MODEL_NAME
 # Initialize LLM
 default_llm = ChatOpenAI(model=os.environ["OPENAI_MODEL_NAME"], temperature=0.7)
 
-# Tool Initialization
-search_tool = SerperDevTool()
-scrape_tool = ScrapeWebsiteTool()
+# Tool Initialization - commented out for now due to dependency issues
+# search_tool = SerperDevTool()
+# scrape_tool = ScrapeWebsiteTool()
 
 # Agent Definitions
 data_analyst_agent = Agent(
     role="Data Analyst",
     goal="Gather and analyze financial data for {stock_selection}, including performance, news, and market trends. "
-         "Provide a detailed report on the stock's current standing and potential risks.",
+         "For multiple stocks, provide comparative analysis and correlation insights. "
+         "Provide a detailed report on the stock(s) current standing and potential risks.",
     backstory="A meticulous Data Analyst with a knack for sifting through financial data, market trends, and news "
-              "to provide actionable insights. Known for detailed reports and risk assessments.",
+              "to provide actionable insights. Expert in both single-stock analysis and portfolio comparisons. "
+              "Known for detailed reports and risk assessments.",
     verbose=True,
     allow_delegation=True,
-    tools=[search_tool, scrape_tool],
     llm=default_llm
 )
 
@@ -47,21 +49,23 @@ trading_strategy_agent = Agent(
     role="Trading Strategy Developer",
     goal="Develop a trading strategy for {stock_selection} based on the Data Analyst's report, user's risk tolerance "
          "({risk_tolerance}), and preferred trading strategy ({trading_strategy_preference}). "
+         "For multiple stocks, provide portfolio allocation and diversification strategies. "
          "Consider news impact ({news_impact_consideration}).",
-    backstory="An experienced Trading Strategy Developer who creates tailored investment strategies. Balances risk "
-              "and reward according to user preferences and market conditions.",
+    backstory="An experienced Trading Strategy Developer who creates tailored investment strategies. Expert in both "
+              "individual stock strategies and portfolio optimization. Balances risk and reward according to user "
+              "preferences and market conditions.",
     verbose=True,
     allow_delegation=True,
-    tools=[search_tool, scrape_tool],
     llm=default_llm
 )
 
 execution_agent = Agent(
     role="Execution Planner",
     goal="Create a detailed execution plan for the developed trading strategy for {stock_selection}, including entry/exit "
-         "points and trade sizes, considering initial capital of {initial_capital}.",
-    backstory="A precise Execution Planner who translates trading strategies into actionable steps. Focuses on minimizing "
-              "slippage and maximizing efficiency.",
+         "points and trade sizes, considering initial capital of {initial_capital}. "
+         "For multiple stocks, provide optimal timing and allocation across the portfolio.",
+    backstory="A precise Execution Planner who translates trading strategies into actionable steps. Expert in both "
+              "single-stock execution and multi-asset portfolio management. Focuses on minimizing slippage and maximizing efficiency.",
     verbose=True,
     allow_delegation=False,
     tools=[],
@@ -76,7 +80,6 @@ risk_management_agent = Agent(
               "Provides clear risk assessments and actionable mitigation advice.",
     verbose=True,
     allow_delegation=True,
-    tools=[search_tool],
     llm=default_llm
 )
 
@@ -172,21 +175,47 @@ def create_financial_crew():
 
 # Crew Execution Function
 def run_crew_analysis(inputs_dict):
-    if "YOUR_FALLBACK_OPENAI_KEY_HERE" in os.environ.get("OPENAI_API_KEY", "") or \
-       "YOUR_FALLBACK_SERPER_KEY_HERE" in os.environ.get("SERPER_API_KEY", ""):
-        print("WARNING: Attempting to run crew with fallback API keys.")
-        return "Error: Agent execution requires valid OpenAI and Serper API keys. Please configure them in the environment."
+    # Check for valid API keys
+    current_openai_key = os.environ.get("OPENAI_API_KEY", "")
+    current_serper_key = os.environ.get("SERPER_API_KEY", "")
+    
+    if not current_openai_key or current_openai_key in ["", "YOUR_FALLBACK_OPENAI_KEY_HERE", "your_openai_api_key_here"]:
+        return "❌ **Error:** Valid OpenAI API key required. Please set OPENAI_API_KEY in your .env file.\n\n" + \
+               "Get your API key from: https://platform.openai.com/api-keys"
+    
+    if not current_openai_key.startswith("sk-"):
+        return "❌ **Error:** Invalid OpenAI API key format. OpenAI keys should start with 'sk-'."
 
     financial_crew = create_financial_crew()
     try:
-        print(f"Starting crew kickoff with inputs: {inputs_dict}")
+        print(f"🚀 Starting crew kickoff with inputs: {inputs_dict}")
         result = financial_crew.kickoff(inputs=inputs_dict)
-        return result
+        return f"# 📊 Financial Analysis Results\n\n{result}"
     except Exception as e:
-        print(f"Error during crew kickoff: {e}")
+        error_msg = str(e)
+        print(f"❌ Error during crew kickoff: {e}")
         import traceback
         traceback.print_exc()
-        return f"An error occurred during agent analysis: {str(e)}"
+        
+        # Provide more specific error messages
+        if "Connection error" in error_msg or "APIError" in error_msg:
+            return f"❌ **Connection Error:** Unable to connect to OpenAI API.\n\n" + \
+                   f"**Details:** {error_msg}\n\n" + \
+                   "**Possible solutions:**\n" + \
+                   "- Check your internet connection\n" + \
+                   "- Verify your OpenAI API key is valid and has credits\n" + \
+                   "- Try again in a few moments"
+        elif "authentication" in error_msg.lower() or "unauthorized" in error_msg.lower():
+            return f"❌ **Authentication Error:** Invalid API credentials.\n\n" + \
+                   f"**Details:** {error_msg}\n\n" + \
+                   "Please check your OpenAI API key in the .env file."
+        elif "quota" in error_msg.lower() or "billing" in error_msg.lower():
+            return f"❌ **Quota/Billing Error:** API usage limit reached.\n\n" + \
+                   f"**Details:** {error_msg}\n\n" + \
+                   "Please check your OpenAI account billing and usage limits."
+        else:
+            return f"❌ **Analysis Error:** {error_msg}\n\n" + \
+                   "Please check the application logs for more details."
 
 if __name__ == '__main__':
     print("Testing agent_logic.py module...")
