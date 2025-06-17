@@ -5,11 +5,32 @@ from dash.exceptions import PreventUpdate
 import plotly.graph_objects as go
 import threading
 import time
+import os
 # Using the working agent logic import
 from agent_logic import run_crew_analysis
 import yfinance as yf
 import pandas as pd
 from datetime import datetime, timedelta
+
+# Debug configuration for virtual environment issues
+DEBUG_THREADING = os.getenv('DEBUG_THREADING', 'false').lower() == 'true'
+DISABLE_BACKGROUND_THREADS = os.getenv('DISABLE_BACKGROUND_THREADS', 'false').lower() == 'true'
+SIMULATE_ANALYSIS_RESULTS = os.getenv('SIMULATE_ANALYSIS_RESULTS', 'false').lower() == 'true'
+
+def debug_print(message):
+    """Print debug messages with thread information"""
+    if DEBUG_THREADING:
+        thread_id = threading.get_ident()
+        thread_name = threading.current_thread().name
+        print(f"[DEBUG] Thread {thread_id} ({thread_name}): {message}")
+
+def get_active_threads_info():
+    """Get information about active threads for debugging"""
+    active_threads = threading.enumerate()
+    return {
+        'count': len(active_threads),
+        'threads': [(t.name, t.ident, t.is_alive()) for t in active_threads]
+    }
 
 # Initialize Dash app with external stylesheets for modern look
 external_stylesheets = [
@@ -770,9 +791,14 @@ def run_agent_analysis_background(stock_ticker_input, initial_capital, risk_tole
     """Run the CrewAI agent analysis in a background thread"""
     global analysis_progress
     
+    # Debug: Log thread start
+    debug_print(f"BACKGROUND ANALYSIS STARTED - Ticker: {stock_ticker_input}")
+    
     try:
         # Parse multiple tickers
         tickers = [t.strip().upper() for t in stock_ticker_input.split(',') if t.strip()]
+        
+        debug_print(f"Processing {len(tickers)} ticker(s): {tickers}")
         
         if len(tickers) == 1:
             analysis_progress['status'] = 'running'
@@ -787,47 +813,71 @@ def run_agent_analysis_background(stock_ticker_input, initial_capital, risk_tole
                 f"Multi-stock analysis: {len(tickers)} stocks"
             ])
         
-        # Prepare inputs for the agent
-        if len(tickers) == 1:
-            # Single stock analysis
-            inputs_dict = {
-                'stock_selection': tickers[0],
-                'initial_capital': str(initial_capital) if initial_capital else '10000',
-                'risk_tolerance': risk_tolerance,
-                'trading_strategy_preference': strategy_preference,
-                'news_impact_consideration': news_impact
-            }
-            
-            analysis_progress['message'] = html.Div([
-                html.I(className="fas fa-brain fa-pulse", style={'marginRight': '0.5rem', 'color': 'var(--primary-color)'}),
-                f"AI agents analyzing {tickers[0]}..."
-            ])
-            
-            # result = run_crew_analysis(inputs_dict)
-            result = run_crew_analysis(inputs_dict)
-            
+        # Check if we should simulate results instead of running real analysis
+        if SIMULATE_ANALYSIS_RESULTS:
+            debug_print("SIMULATION MODE: Using mock analysis results")
+            time.sleep(2)  # Simulate some processing time
+            result = f"""
+# Simulated Analysis Results for {', '.join(tickers)}
+
+## Investment Recommendation: MODERATE BUY
+
+**Key Findings:**
+- Current Price Analysis: Within normal trading range
+- Technical Indicators: Mixed signals with slight bullish bias
+- Risk Assessment: Medium risk profile suitable for balanced portfolios
+- Market Sentiment: Neutral to positive
+
+**Simulated Metrics:**
+- Expected Return: 8-12% annually
+- Risk Score: 6/10
+- Volatility: Moderate
+- Recommendation Strength: 75%
+
+*Note: This is a simulated result for UI testing purposes.*
+"""
         else:
-            # Multi-stock comparative analysis
-            analysis_progress['message'] = html.Div([
-                html.I(className="fas fa-brain fa-pulse", style={'marginRight': '0.5rem', 'color': 'var(--primary-color)'}),
-                f"Running comparative analysis on {len(tickers)} stocks..."
-            ])
-            
-            # For multiple stocks, we'll create a comparative analysis
-            stock_list = ', '.join(tickers)
-            inputs_dict = {
-                'stock_selection': f"Portfolio comparison of {stock_list}",
-                'initial_capital': str(initial_capital) if initial_capital else '10000',
-                'risk_tolerance': risk_tolerance,
-                'trading_strategy_preference': strategy_preference,
-                'news_impact_consideration': news_impact
-            }
-            
-            # Modify the analysis to include portfolio diversification insights
-            inputs_dict['additional_context'] = f"Perform comparative analysis across {len(tickers)} stocks: {stock_list}. Focus on portfolio diversification, correlation analysis, and optimal allocation strategies."
-            
-            # result = run_crew_analysis(inputs_dict)
-            result = run_crew_analysis(inputs_dict)
+            # Prepare inputs for the agent
+            if len(tickers) == 1:
+                # Single stock analysis
+                inputs_dict = {
+                    'stock_selection': tickers[0],
+                    'initial_capital': str(initial_capital) if initial_capital else '10000',
+                    'risk_tolerance': risk_tolerance,
+                    'trading_strategy_preference': strategy_preference,
+                    'news_impact_consideration': news_impact
+                }
+                
+                analysis_progress['message'] = html.Div([
+                    html.I(className="fas fa-brain fa-pulse", style={'marginRight': '0.5rem', 'color': 'var(--primary-color)'}),
+                    f"AI agents analyzing {tickers[0]}..."
+                ])
+                
+                debug_print(f"Running single stock analysis for {tickers[0]}")
+                result = run_crew_analysis(inputs_dict)
+                
+            else:
+                # Multi-stock comparative analysis
+                analysis_progress['message'] = html.Div([
+                    html.I(className="fas fa-brain fa-pulse", style={'marginRight': '0.5rem', 'color': 'var(--primary-color)'}),
+                    f"Running comparative analysis on {len(tickers)} stocks..."
+                ])
+                
+                # For multiple stocks, we'll create a comparative analysis
+                stock_list = ', '.join(tickers)
+                inputs_dict = {
+                    'stock_selection': f"Portfolio comparison of {stock_list}",
+                    'initial_capital': str(initial_capital) if initial_capital else '10000',
+                    'risk_tolerance': risk_tolerance,
+                    'trading_strategy_preference': strategy_preference,
+                    'news_impact_consideration': news_impact
+                }
+                
+                # Modify the analysis to include portfolio diversification insights
+                inputs_dict['additional_context'] = f"Perform comparative analysis across {len(tickers)} stocks: {stock_list}. Focus on portfolio diversification, correlation analysis, and optimal allocation strategies."
+                
+                debug_print(f"Running multi-stock analysis for {len(tickers)} stocks")
+                result = run_crew_analysis(inputs_dict)
         
         analysis_progress['status'] = 'completed'
         analysis_progress['message'] = html.Div([
@@ -836,6 +886,8 @@ def run_agent_analysis_background(stock_ticker_input, initial_capital, risk_tole
         ], className="status-indicator status-success")
         analysis_progress['result'] = result
         
+        debug_print(f"BACKGROUND ANALYSIS COMPLETED SUCCESSFULLY")
+        
     except Exception as e:
         analysis_progress['status'] = 'error'
         analysis_progress['message'] = html.Div([
@@ -843,6 +895,17 @@ def run_agent_analysis_background(stock_ticker_input, initial_capital, risk_tole
             f"Analysis failed: {str(e)[:100]}..."
         ], className="status-indicator status-error")
         analysis_progress['result'] = f"**Error during analysis:** {str(e)}"
+        
+        debug_print(f"BACKGROUND ANALYSIS FAILED: {str(e)}")
+    
+    finally:
+        # Debug: Log thread end and active threads
+        debug_print(f"BACKGROUND ANALYSIS THREAD ENDING")
+        if DEBUG_THREADING:
+            threads_info = get_active_threads_info()
+            debug_print(f"Active threads after analysis: {threads_info['count']}")
+            for name, ident, is_alive in threads_info['threads']:
+                debug_print(f"  - {name} (ID: {ident}, Alive: {is_alive})")
 
 # Callback to run financial analysis (real agent version)
 @app.callback(
@@ -873,6 +936,9 @@ def run_financial_analysis(n_clicks, stock_ticker_input, initial_capital, risk_t
     if analysis_progress['status'] == 'running':
         return analysis_progress['result'], "Analysis in progress... Please wait."
     
+    # Debug: Log callback start
+    debug_print(f"ANALYSIS CALLBACK TRIGGERED - Tickers: {tickers}")
+    
     # Reset progress
     analysis_progress = {
         'status': 'idle',
@@ -880,13 +946,57 @@ def run_financial_analysis(n_clicks, stock_ticker_input, initial_capital, risk_t
         'result': ''
     }
     
-    # Start background analysis
-    analysis_thread = threading.Thread(
-        target=run_agent_analysis_background,
-        args=(stock_ticker_input, initial_capital, risk_tolerance, strategy_preference, news_impact)
-    )
-    analysis_thread.daemon = True
-    analysis_thread.start()
+    # Check if background threads are disabled for debugging
+    if DISABLE_BACKGROUND_THREADS:
+        debug_print("BACKGROUND THREADS DISABLED - Running synchronous analysis")
+        
+        if SIMULATE_ANALYSIS_RESULTS:
+            # Use simulation
+            time.sleep(1)  # Brief delay to simulate processing
+            mock_result = f"""
+# Mock Analysis Results for {', '.join(tickers)}
+
+## Investment Recommendation: MODERATE BUY (SYNC MODE)
+
+**Key Findings:**
+- This is a synchronous mock result for UI debugging
+- Background threads are disabled
+- All analysis runs in the main thread
+
+**Mock Metrics:**
+- Expected Return: 10% annually  
+- Risk Score: 5/10
+- Volatility: Low-Medium
+- Recommendation: 80% confidence
+
+*Note: Background threading disabled for debugging.*
+"""
+            analysis_progress['status'] = 'completed'
+            analysis_progress['result'] = mock_result
+            return mock_result, "Synchronous mock analysis completed"
+        else:
+            # Run real analysis synchronously (WARNING: This will block the UI!)
+            debug_print("WARNING: Running real analysis synchronously - UI will be blocked!")
+            run_agent_analysis_background(stock_ticker_input, initial_capital, risk_tolerance, strategy_preference, news_impact)
+            return analysis_progress['result'], "Synchronous analysis completed"
+    
+    else:
+        # Normal background thread operation
+        debug_print("Starting background thread for analysis")
+        
+        # Start background analysis
+        analysis_thread = threading.Thread(
+            target=run_agent_analysis_background,
+            args=(stock_ticker_input, initial_capital, risk_tolerance, strategy_preference, news_impact)
+        )
+        analysis_thread.daemon = True
+        
+        # Debug: Option to comment out thread.start() for testing
+        # UNCOMMENT THE FOLLOWING LINE TO DISABLE BACKGROUND THREAD EXECUTION:
+        # debug_print("analysis_thread.start() COMMENTED OUT FOR DEBUGGING")
+        analysis_thread.start()
+        
+        debug_print(f"Background thread started with ID: {analysis_thread.ident}")
     
     if len(tickers) == 1:
         return f"Single stock analysis started for {tickers[0]}. Check progress above...", "Starting analysis..."

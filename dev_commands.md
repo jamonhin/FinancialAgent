@@ -239,6 +239,80 @@ echo "Environment active: $(echo $VIRTUAL_ENV)"
 
 ## ⚠️ TROUBLESHOOTING
 
+## ⚠️ TROUBLESHOOTING
+
+### Virtual Environment & Threading Debug Features
+
+The app includes debugging features for virtual environment and Dash hot reloader issues:
+
+#### Environment Variables for Debugging
+```bash
+# Enable thread debugging (shows thread IDs and lifecycle)
+export DEBUG_THREADING=true
+
+# Disable background threads (runs analysis synchronously)  
+export DISABLE_BACKGROUND_THREADS=true
+
+# Use simulated results (faster UI testing)
+export SIMULATE_ANALYSIS_RESULTS=true
+
+# Start app with debugging enabled
+nohup python app.py > app.log 2>&1 &
+
+# Check debug output
+tail -f app.log
+```
+
+#### Thread Debugging Steps
+```bash
+# 1. Enable thread debugging and start app
+export DEBUG_THREADING=true
+source venv/bin/activate
+python app.py
+
+# 2. Watch for thread information in logs
+# Look for messages like:
+# [DEBUG] Thread 123456 (ThreadPoolExecutor-0_0): BACKGROUND ANALYSIS STARTED
+# [DEBUG] Thread 123456 (ThreadPoolExecutor-0_0): Active threads after analysis: 3
+
+# 3. Check for lingering threads after hot reload
+# Each analysis should show thread start/end with IDs
+```
+
+#### UI Testing Without Background Threads
+```bash
+# Disable threads and use simulated results for smooth UI development
+export DISABLE_BACKGROUND_THREADS=true
+export SIMULATE_ANALYSIS_RESULTS=true
+source venv/bin/activate
+python app.py
+
+# UI changes will reload faster without background thread complications
+```
+
+#### Debug Script Usage
+```bash
+# Run comprehensive threading test
+python debug_threading.py
+
+# Set up debug environment variables
+python debug_threading.py setup
+
+# Monitor threads for 60 seconds
+python debug_threading.py monitor 60
+
+# Check app status only
+python debug_threading.py status
+```
+
+#### Manual Thread Control (Code-level Debugging)
+```python
+# In app.py, line ~945, you can comment out analysis_thread.start():
+# analysis_thread.start()  # Comment this line to prevent thread execution
+
+# This allows testing UI without any background processing
+```
+
 ### If Terminal Prompt Looks Wrong:
 ```bash
 # If you see corrupted prompt or strange paths:
