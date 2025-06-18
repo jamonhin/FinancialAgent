@@ -330,6 +330,90 @@ body:not([data-theme]):not(.dark-theme) {
     z-index: 1;
 }
 
+/* Modern Dropdown Styles */
+.modern-dropdown {
+    width: 100%;
+}
+
+.modern-dropdown .Select-control {
+    background: var(--surface-color) !important;
+    border: 2px solid var(--border-color) !important;
+    border-radius: var(--border-radius) !important;
+    padding: 0.375rem 0.5rem !important;
+    transition: all 0.3s ease !important;
+    color: var(--text-primary) !important;
+    min-height: 50px !important;
+}
+
+.modern-dropdown .Select-control:hover {
+    border-color: var(--primary-light) !important;
+}
+
+.modern-dropdown .Select-control.is-focused {
+    border-color: var(--primary-color) !important;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1) !important;
+    transform: translateY(-1px);
+}
+
+.modern-dropdown .Select-placeholder {
+    color: var(--text-muted) !important;
+    font-size: 1rem !important;
+}
+
+.modern-dropdown .Select-input {
+    color: var(--text-primary) !important;
+}
+
+.modern-dropdown .Select-value {
+    color: var(--text-primary) !important;
+    font-size: 1rem !important;
+}
+
+.modern-dropdown .Select-menu-outer {
+    background: var(--surface-elevated) !important;
+    border: 2px solid var(--border-color) !important;
+    border-radius: var(--border-radius) !important;
+    box-shadow: var(--shadow-lg) !important;
+    margin-top: 4px !important;
+    z-index: 999 !important;
+}
+
+.modern-dropdown .Select-menu {
+    background: transparent !important;
+}
+
+.modern-dropdown .Select-option {
+    background: transparent !important;
+    color: var(--text-primary) !important;
+    padding: 0.75rem 1rem !important;
+    transition: all 0.2s ease !important;
+    font-size: 0.95rem !important;
+}
+
+.modern-dropdown .Select-option:hover {
+    background: var(--primary-color) !important;
+    color: white !important;
+}
+
+.modern-dropdown .Select-option.is-selected {
+    background: var(--primary-color) !important;
+    color: white !important;
+}
+
+.modern-dropdown .Select-option.is-focused {
+    background: var(--primary-light) !important;
+    color: white !important;
+}
+
+.modern-dropdown .Select-arrow-zone {
+    color: var(--text-secondary) !important;
+    transition: color 0.3s ease !important;
+}
+
+.modern-dropdown .Select-control:hover .Select-arrow-zone {
+    color: var(--primary-color) !important;
+}
+
 /* Buttons */
 .modern-button {
     background: linear-gradient(135deg, var(--primary-color) 0%, var(--primary-dark) 100%);

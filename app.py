@@ -318,6 +318,26 @@ main_page_layout = html.Div([
                                 html.I(className="fas fa-info-circle", style={'marginRight': '0.5rem', 'color': 'var(--primary-color)'}),
                                 "Enter multiple stocks separated by commas for comparative analysis"
                             ], style={'fontSize': '0.85rem', 'color': 'var(--text-secondary)', 'margin': '0 0 1rem 0'}),
+                            
+                            # Chart Period Selector
+                            html.Div([
+                                html.Label("Chart Period", className="input-label"),
+                                dcc.Dropdown(
+                                    id='chart-period-dropdown',
+                                    options=[
+                                        {'label': '5 Days', 'value': '5d'},
+                                        {'label': '1 Month', 'value': '1mo'},
+                                        {'label': '3 Months', 'value': '3mo'},
+                                        {'label': '6 Months', 'value': '6mo'},
+                                        {'label': '1 Year', 'value': '1y'},
+                                        {'label': '2 Years', 'value': '2y'}
+                                    ],
+                                    value='6mo',
+                                    className='modern-dropdown',
+                                    style={'marginBottom': '1rem'}
+                                )
+                            ]),
+                            
                             html.Button([
                                 html.I(className="fas fa-download", style={'marginRight': '0.5rem'}),
                                 "Fetch Stock Info"
@@ -442,7 +462,8 @@ main_page_layout = html.Div([
                                     style={'background': 'var(--surface-color)', 'padding': '1.5rem', 
                                           'borderRadius': '8px', 'minHeight': '300px', 'border': '1px solid var(--border-color)',
                                           'color': 'var(--text-primary)'})
-                    ], className="analysis-report-container")
+                    ], className="analysis-report-container", 
+                       style={'overflowX': 'auto', 'wordBreak': 'break-word'})
                 ], className="glass-card")
             ], style={'gridColumn': '2'})
         ], className="grid-layout")
@@ -482,10 +503,11 @@ def login(n_clicks, username, password):
      Output('stock-chart-graph', 'figure'),
      Output('news-feed-div', 'children')],
     [Input('fetch-stock-info-button', 'n_clicks')],
-    [State('stock-ticker-input', 'value')],
+    [State('stock-ticker-input', 'value'),
+     State('chart-period-dropdown', 'value')],
     prevent_initial_call=True
 )
-def update_stock_info(n_clicks, ticker_input):
+def update_stock_info(n_clicks, ticker_input, chart_period):
     if not ticker_input:
         return "Please enter stock ticker(s).", {}, "No news available."
 
@@ -519,22 +541,13 @@ def update_stock_info(n_clicks, ticker_input):
             ])
         ])
     
-    # Fetch real stock data from Yahoo Finance
+    # Fetch real stock data from Yahoo Finance with selected period
     try:
-        stock_data, real_chart = fetch_stock_data(tickers, period="6mo")
+        stock_data, real_chart = fetch_stock_data(tickers, period=chart_period or "6mo")
         placeholder_figure = real_chart
         
-        # Add real stock info to the title
-        if stock_data:
-            successful_tickers = [ticker for ticker, data in stock_data.items() if data.get('current_price') is not None]
-            if successful_tickers:
-                placeholder_figure.update_layout(
-                    title=dict(
-                        text=f"Real-Time Stock Data - Last 6 Months ({len(successful_tickers)} stocks)" if len(tickers) > 1 else f"{tickers[0]} - Real-Time Data (6 Months)",
-                        font=dict(size=16, color='var(--text-primary)'),
-                        x=0.5
-                    )
-                )
+        # The title is now handled within fetch_stock_data function
+        
     except Exception as e:
         print(f"Error fetching real stock data: {e}")
         # Fallback to a simple message if Yahoo Finance fails
@@ -585,7 +598,7 @@ def update_stock_info(n_clicks, ticker_input):
 # Utility function to fetch real stock data
 def fetch_stock_data(tickers, period="6mo"):
     """
-    Fetch real stock data from Yahoo Finance with fallback to mock data
+    Enhanced stock data fetching from Yahoo Finance with improved real-time data
     Args:
         tickers: List of stock symbols
         period: Time period ('1d', '5d', '1mo', '3mo', '6mo', '1y', '2y', '5y', '10y', 'ytd', 'max')
@@ -598,103 +611,188 @@ def fetch_stock_data(tickers, period="6mo"):
     stock_data = {}
     figure = go.Figure()
     
-    colors = ['#2563eb', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#14b8a6']
+    colors = [
+        '#2563eb',  # Blue
+        '#10b981',  # Green  
+        '#f59e0b',  # Orange
+        '#ef4444',  # Red
+        '#8b5cf6',  # Purple
+        '#06b6d4',  # Cyan
+        '#ec4899',  # Pink
+        '#14b8a6',  # Teal
+        '#f97316',  # Orange-red
+        '#84cc16',  # Lime
+        '#6366f1',  # Indigo
+        '#d946ef'   # Magenta
+    ]
     
     # Mock data as fallback
     mock_prices = {
         'AAPL': 175.50, 'MSFT': 285.30, 'GOOGL': 125.40, 'AMZN': 98.75,
         'TSLA': 185.60, 'META': 245.80, 'NVDA': 420.25, 'AMD': 105.30,
-        'NFLX': 385.90, 'CRM': 195.40
+        'NFLX': 385.90, 'CRM': 195.40, 'ORCL': 115.20, 'INTC': 45.80,
+        'IBM': 135.60, 'SPY': 415.30, 'QQQ': 350.70, 'IWM': 185.40
     }
     
-    def create_mock_data(ticker, base_price, days=30):
-        """Create realistic mock stock data"""
+    def create_mock_data(ticker, base_price, days=180):  # Extended to 6 months of data
+        """Create realistic mock stock data with better patterns"""
         dates = pd.date_range(end=datetime.now(), periods=days, freq='D')
         prices = []
+        volumes = []
         current_price = base_price
         
         for i in range(days):
-            # Random walk with slight upward bias
-            change_percent = random.gauss(0.001, 0.02)  # Small upward bias, 2% volatility
+            # More realistic random walk with trends
+            trend_factor = 0.0002 if i % 30 < 20 else -0.0001  # Monthly trend cycles
+            change_percent = random.gauss(trend_factor, 0.018)  # Realistic volatility
             current_price *= (1 + change_percent)
-            prices.append(max(current_price, 1.0))  # Ensure price doesn't go below $1
+            current_price = max(current_price, base_price * 0.5)  # Floor at 50% of original
+            prices.append(current_price)
+            
+            # Realistic volume patterns
+            base_volume = random.randint(1000000, 10000000)
+            volume_mult = random.uniform(0.5, 2.0)
+            volumes.append(int(base_volume * volume_mult))
         
         return pd.DataFrame({
             'Close': prices,
-            'Open': [p * random.uniform(0.98, 1.02) for p in prices],
-            'High': [p * random.uniform(1.00, 1.03) for p in prices],
-            'Low': [p * random.uniform(0.97, 1.00) for p in prices],
-            'Volume': [random.randint(1000000, 50000000) for _ in prices]
+            'Open': [p * random.uniform(0.995, 1.005) for p in prices],
+            'High': [p * random.uniform(1.002, 1.025) for p in prices],
+            'Low': [p * random.uniform(0.975, 0.998) for p in prices],
+            'Volume': volumes
         }, index=dates)
+    
+    def get_stock_info(ticker):
+        """Get additional stock information"""
+        try:
+            stock = yf.Ticker(ticker)
+            info = stock.info
+            return {
+                'longName': info.get('longName', ticker),
+                'marketCap': info.get('marketCap'),
+                'sector': info.get('sector'),
+                'industry': info.get('industry'),
+                'peRatio': info.get('trailingPE'),
+                'dividendYield': info.get('dividendYield')
+            }
+        except:
+            return {'longName': ticker}
+    
+    print(f"Fetching stock data for {len(tickers)} ticker(s): {', '.join(tickers)}")
     
     for i, ticker in enumerate(tickers[:8]):  # Limit to 8 stocks for visibility
         try:
-            print(f"Fetching data for {ticker}...")
+            print(f"Processing {ticker} ({i+1}/{min(len(tickers), 8)})...")
             
-            # Try to fetch real data first (with timeout and rate limiting)
+            # Try to fetch real data with improved error handling
             real_data_success = False
+            stock_info = {}
+            
             try:
-                time.sleep(0.5)  # Rate limiting
+                time.sleep(0.3)  # Rate limiting for API
                 stock = yf.Ticker(ticker)
-                hist = stock.history(period="5d", timeout=5)  # Shorter period and timeout
                 
-                if not hist.empty and len(hist) > 0 and 'Close' in hist.columns:
-                    current_price = float(hist['Close'].iloc[-1])
-                    first_price = float(hist['Close'].iloc[0])
-                    price_change = ((current_price - first_price) / first_price * 100) if first_price != 0 else 0
+                # Get stock info first
+                stock_info = get_stock_info(ticker)
+                
+                # Fetch historical data with retry logic
+                for attempt in range(2):  # Retry once if failed
+                    try:
+                        hist = stock.history(period=period, timeout=10)
+                        if not hist.empty and len(hist) >= 2 and 'Close' in hist.columns:
+                            # Validate data quality
+                            if hist['Close'].isna().sum() / len(hist) < 0.5:  # Less than 50% missing data
+                                break
+                    except Exception as e:
+                        print(f"Attempt {attempt + 1} failed for {ticker}: {e}")
+                        if attempt == 0:
+                            time.sleep(1)  # Wait before retry
+                        else:
+                            raise e
+                
+                if not hist.empty and len(hist) >= 2 and 'Close' in hist.columns:
+                    # Clean the data
+                    hist = hist.dropna()
                     
-                    stock_data[ticker] = {
-                        'data': hist,
-                        'current_price': current_price,
-                        'price_change': price_change,
-                        'source': 'real'
-                    }
-                    
-                    figure.add_trace(go.Scatter(
-                        x=hist.index,
-                        y=hist['Close'],
-                        mode='lines',
-                        name=f"{ticker} (${current_price:.2f}) [Real]",
-                        line=dict(color=colors[i % len(colors)], width=3),
-                        hovertemplate=f"<b>{ticker}</b> [Real Data]<br>" +
-                                    "Date: %{x}<br>" +
-                                    "Price: $%{y:.2f}<br>" +
-                                    "<extra></extra>"
-                    ))
-                    real_data_success = True
-                    print(f"✓ Real data for {ticker}: ${current_price:.2f}")
+                    if len(hist) >= 2:
+                        current_price = float(hist['Close'].iloc[-1])
+                        first_price = float(hist['Close'].iloc[0])
+                        price_change = ((current_price - first_price) / first_price * 100) if first_price != 0 else 0
+                        
+                        # Calculate additional metrics
+                        volatility = hist['Close'].pct_change().std() * 100
+                        avg_volume = hist['Volume'].mean() if 'Volume' in hist.columns else 0
+                        
+                        stock_data[ticker] = {
+                            'data': hist,
+                            'current_price': current_price,
+                            'price_change': price_change,
+                            'volatility': volatility,
+                            'avg_volume': avg_volume,
+                            'source': 'real',
+                            'info': stock_info
+                        }
+                        
+                        # Enhanced chart trace with unique colors for each stock
+                        # Use unique color for each stock, not based on price change
+                        stock_color = colors[i % len(colors)]
+                        
+                        figure.add_trace(go.Scatter(
+                            x=hist.index,
+                            y=hist['Close'],
+                            mode='lines',
+                            name=f"{ticker} ${current_price:.2f} ({price_change:+.1f}%)",
+                            line=dict(color=stock_color, width=3),
+                            hovertemplate=f"<b>{ticker}</b> - {stock_info.get('longName', ticker)}<br>" +
+                                        "Date: %{x}<br>" +
+                                        "Price: $%{y:.2f}<br>" +
+                                        f"Change: {price_change:+.2f}%<br>" +
+                                        "<extra></extra>"
+                        ))
+                        real_data_success = True
+                        print(f"✓ Real data for {ticker}: ${current_price:.2f} ({price_change:+.1f}%)")
                     
             except Exception as e:
-                print(f"Real data failed for {ticker}: {e}")
+                print(f"Real data failed for {ticker}: {str(e)[:100]}...")
             
-            # If real data failed, use mock data
+            # If real data failed, use enhanced mock data
             if not real_data_success:
                 base_price = mock_prices.get(ticker, random.uniform(50, 300))
-                mock_hist = create_mock_data(ticker, base_price)
+                
+                # Determine period for mock data
+                days_map = {'1d': 1, '5d': 5, '1mo': 30, '3mo': 90, '6mo': 180, '1y': 365}
+                mock_days = days_map.get(period, 180)
+                
+                mock_hist = create_mock_data(ticker, base_price, mock_days)
                 
                 current_price = mock_hist['Close'].iloc[-1]
                 first_price = mock_hist['Close'].iloc[0]
                 price_change = ((current_price - first_price) / first_price * 100)
+                volatility = mock_hist['Close'].pct_change().std() * 100
                 
                 stock_data[ticker] = {
                     'data': mock_hist,
                     'current_price': current_price,
                     'price_change': price_change,
-                    'source': 'mock'
+                    'volatility': volatility,
+                    'avg_volume': mock_hist['Volume'].mean(),
+                    'source': 'mock',
+                    'info': {'longName': f"{ticker} Corporation"}
                 }
                 
                 figure.add_trace(go.Scatter(
                     x=mock_hist.index,
                     y=mock_hist['Close'],
                     mode='lines',
-                    name=f"{ticker} (${current_price:.2f}) [Demo]",
-                    line=dict(color=colors[i % len(colors)], width=3, dash='dot'),
+                    name=f"{ticker} ${current_price:.2f} [Demo]",
+                    line=dict(color=colors[i % len(colors)], width=2, dash='dot'),
                     hovertemplate=f"<b>{ticker}</b> [Demo Data]<br>" +
                                 "Date: %{x}<br>" +
                                 "Price: $%{y:.2f}<br>" +
+                                f"Change: {price_change:+.2f}%<br>" +
                                 "<extra></extra>"
                 ))
-                print(f"✓ Mock data for {ticker}: ${current_price:.2f}")
+                print(f"✓ Mock data for {ticker}: ${current_price:.2f} ({price_change:+.1f}%)")
                 
         except Exception as e:
             print(f"✗ Error processing {ticker}: {e}")
@@ -707,61 +805,104 @@ def fetch_stock_data(tickers, period="6mo"):
                 'error': str(e)
             }
     
-    # Configure the chart layout
+    # Configure the enhanced chart layout
     has_data = len([t for t in stock_data.values() if t.get('current_price') is not None]) > 0
     
     if has_data:
         # Check if we have any real data
         real_data_count = len([t for t in stock_data.values() if t.get('source') == 'real'])
-        data_source_note = ""
+        total_stocks = len([t for t in stock_data.values() if t.get('current_price') is not None])
+        
+        # Enhanced data source indicators
         if real_data_count == 0:
-            data_source_note = " [Demo Data - Limited API Access]"
-        elif real_data_count < len(tickers):
-            data_source_note = f" [Mixed: {real_data_count} Real, {len(tickers)-real_data_count} Demo]"
+            data_source_note = " [Demo Data - API Unavailable]"
+            title_color = '#f59e0b'  # Orange for demo
+        elif real_data_count < total_stocks:
+            data_source_note = f" [Mixed: {real_data_count} Real, {total_stocks-real_data_count} Demo]"
+            title_color = '#8b5cf6'  # Purple for mixed
         else:
             data_source_note = " [Real-Time Data]"
+            title_color = '#10b981'  # Green for all real
+            
+        # Calculate period display name
+        period_names = {
+            '1d': '1 Day', '5d': '5 Days', '1mo': '1 Month', 
+            '3mo': '3 Months', '6mo': '6 Months', '1y': '1 Year'
+        }
+        period_display = period_names.get(period, period.upper())
             
         figure.update_layout(
             title=dict(
-                text=f"Stock Price Chart{data_source_note}",
-                font=dict(size=16, color='var(--text-primary)'),
-                x=0.5
+                text=f"Stock Price Analysis - {period_display}{data_source_note}",
+                font=dict(size=18, color=title_color, family="Inter"),
+                x=0.5,
+                y=0.95
             ),
             xaxis=dict(
                 title="Date",
-                gridcolor='var(--border-color)',
+                gridcolor='rgba(128,128,128,0.2)',
                 showgrid=True,
-                color='var(--text-secondary)'
+                color='var(--text-secondary)',
+                tickfont=dict(size=11),
+                rangeslider=dict(visible=False),  # Remove range slider for cleaner look
+                type='date'
             ),
             yaxis=dict(
                 title="Price (USD)",
-                gridcolor='var(--border-color)',
+                gridcolor='rgba(128,128,128,0.2)',
                 showgrid=True,
-                color='var(--text-secondary)'
+                color='var(--text-secondary)',
+                tickfont=dict(size=11),
+                tickformat='.2f'
             ),
             plot_bgcolor='rgba(0,0,0,0)',
             paper_bgcolor='rgba(0,0,0,0)',
             font=dict(family="Inter", color='var(--text-secondary)'),
             showlegend=True,
             legend=dict(
-                orientation="h",
-                yanchor="bottom",
-                y=1.02,
-                xanchor="right",
-                x=1,
+                orientation="v",
+                yanchor="top",
+                y=0.98,
+                xanchor="left",
+                x=1.02,
+                bgcolor='rgba(255,255,255,0.9)',
+                bordercolor='rgba(128,128,128,0.3)',
+                borderwidth=1,
+                font=dict(size=11)
             ),
-            margin=dict(l=0, r=0, t=50, b=0),
-            height=400,
-            annotations=[
-                dict(
-                    text="Note: Demo data used when real-time data is unavailable due to API limits",
-                    xref="paper", yref="paper",
-                    x=0.5, y=-0.15, xanchor='center', yanchor='top',
-                    showarrow=False,
-                    font=dict(size=10, color='var(--text-secondary)'),
-                ) if real_data_count < len(tickers) else {}
-            ]
+            margin=dict(l=60, r=150, t=80, b=60),
+            height=450,
+            hovermode='x unified',  # Better hover interaction
+            annotations=[]
         )
+        
+        # Add performance summary annotation
+        if total_stocks > 0:
+            real_stocks = [t for t in stock_data.values() if t.get('source') == 'real']
+            if real_stocks:
+                avg_change = sum(s['price_change'] for s in real_stocks) / len(real_stocks)
+                change_color = '#10b981' if avg_change >= 0 else '#ef4444'
+                
+                figure.add_annotation(
+                    text=f"Portfolio Avg: {avg_change:+.2f}% | Data Quality: {real_data_count}/{total_stocks} Real",
+                    xref="paper", yref="paper",
+                    x=0.02, y=0.02, xanchor='left', yanchor='bottom',
+                    showarrow=False,
+                    font=dict(size=12, color=change_color, family="Inter"),
+                    bgcolor='rgba(255,255,255,0.8)',
+                    bordercolor=change_color,
+                    borderwidth=1
+                )
+        
+        # Add data source note for mixed data
+        if real_data_count < total_stocks and real_data_count > 0:
+            figure.add_annotation(
+                text="⚠️ Some tickers show demo data due to API limitations",
+                xref="paper", yref="paper",
+                x=0.5, y=-0.12, xanchor='center', yanchor='top',
+                showarrow=False,
+                font=dict(size=10, color='var(--text-secondary)', style='italic'),
+            )
     else:
         # Create error figure if no data was found
         figure.add_annotation(

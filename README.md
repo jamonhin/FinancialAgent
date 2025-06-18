@@ -1,10 +1,15 @@
 # Financial Agent with Real CrewAI Integration 🤖💰
 
-A sophisticated web-based financial analysis application that uses **real CrewAI agents** to provide comprehensive stock analysis, trading strategies, execution plans, and risk assessments.
+A sophisticated web-based financial analysis application that uses **real CrewAI agents** to provide comprehensive stock analysis, trading strategies, execution plans, and risk assessments. Features real-time Yahoo Finance data integration with enhanced charting capabilities.
 
-## 🆕 What's New: Real Agent Integration
+## 🆕 What's New: Enhanced Real Data Integration
 
-This branch (`feat/financial-agent-ui-prototype`) now includes **real CrewAI agent integration**, making it a fully functional financial analysis tool powered by AI agents.
+This branch (`feat/financial-agent-ui-prototype`) now includes:
+- ✅ **Real CrewAI agent integration** with multi-agent collaboration
+- ✅ **Live Yahoo Finance data** with enhanced charts and period selection
+- ✅ **Multi-stock analysis** with unique color coding for each stock
+- ✅ **Comprehensive debugging tools** for development and troubleshooting
+- ✅ **Automated setup script** for quick installation
 
 ## 🤖 The Multi-Agent Team
 
@@ -33,16 +38,35 @@ The application employs a team of specialized AI agents:
 - OpenAI API Key ([Get one here](https://platform.openai.com/api-keys))
 - Serper API Key ([Get one here](https://serper.dev/)) - Optional but recommended for web search
 
-### 1. Automated Setup
+### 🎯 Automated Setup (Recommended)
+
+The easiest way to get started is using our automated setup script:
+
 ```bash
+# Make setup script executable
+chmod +x setup.sh
+
+# Run automated setup
 ./setup.sh
 ```
 
-### 2. Manual Setup
+**What the setup script does:**
+- ✅ Creates virtual environment (`venv`)
+- ✅ Activates the environment
+- ✅ Installs all dependencies from `requirements.txt`
+- ✅ Creates `.env` file from template
+- ✅ Provides clear next steps
+
+### 🔧 Manual Setup (Alternative)
+
+If you prefer manual setup or need to troubleshoot:
+
 ```bash
 # Create virtual environment
-python3 -m venv financial_agent_env
-source financial_agent_env/bin/activate
+python3 -m venv venv
+
+# Activate virtual environment
+source venv/bin/activate
 
 # Install dependencies
 pip install -r requirements.txt
@@ -62,6 +86,10 @@ OPENAI_MODEL_NAME=gpt-3.5-turbo
 
 ### 4. Run the Application
 ```bash
+# Ensure virtual environment is activated
+source venv/bin/activate
+
+# Start the application
 python app.py
 ```
 
@@ -70,19 +98,21 @@ Open your browser and go to: `http://localhost:8050/app/`
 
 ## 🎯 How to Use
 
-### Login
-- Enter any username/password (authentication is simulated)
+### Stock Chart Analysis
+1. **Enter Stock Ticker(s)** (e.g., AAPL, TSLA, GOOGL or multiple: AAPL,MSFT,GOOGL)
+2. **Select Time Period** from dropdown (1D, 5D, 1M, 3M, 6M, 1Y, 2Y, 5Y)
+3. **Click "Fetch Stock Data"** to see real Yahoo Finance charts
+4. **View Multi-Stock Analysis** with unique colors for each stock
 
-### Stock Analysis
-1. **Enter Stock Ticker** (e.g., AAPL, TSLA, GOOGL)
-2. **Click "Fetch Stock Info"** to see basic stock information
-3. **Configure Analysis Parameters:**
+### AI Agent Analysis
+1. **Enter Stock Ticker** for detailed AI analysis
+2. **Configure Analysis Parameters:**
    - Initial Capital
    - Risk Tolerance (Low/Medium/High)
    - Trading Strategy Preference
    - News Impact Consideration
 
-4. **Click "Run Analysis"** to start the multi-agent analysis
+3. **Click "Start AI Analysis"** to launch the multi-agent analysis
 
 ### Analysis Process
 - The agents work collaboratively to analyze the stock
@@ -116,12 +146,37 @@ Data Analyst → Trading Strategy → Execution Planner → Risk Management
 FinancialAgent/
 ├── app.py                 # Main Dash application with agent integration
 ├── agent_logic.py         # CrewAI agent definitions and orchestration
-├── requirements.txt       # Python dependencies
-├── setup.sh              # Automated setup script
+├── requirements.txt       # Python dependencies (updated with latest yfinance)
+├── setup.sh              # 🆕 Automated setup script for easy installation
+├── debug_threading.py     # 🆕 Threading debug tools for development
+├── dev_commands.md        # 🆕 Comprehensive development documentation
 ├── .env.example          # Environment variables template
 ├── .env                  # Your API keys (create from .env.example)
+├── assets/               # CSS and styling assets
+│   └── modern-styles.css # Enhanced UI styling
 └── README.md             # This file
 ```
+
+## 🆕 New Features & Enhancements
+
+### Real Yahoo Finance Integration
+- **Live Data Fetching**: Real-time stock data from Yahoo Finance API
+- **Period Selection**: Choose from 1D, 5D, 1M, 3M, 6M, 1Y, 2Y, 5Y
+- **Multi-Stock Charts**: Compare multiple stocks with unique color coding
+- **Enhanced Error Handling**: Graceful fallback to demo data if API fails
+- **Volume Analysis**: Additional volume subplot for detailed analysis
+
+### Development & Debugging Tools
+- **setup.sh**: One-command automated environment setup
+- **debug_threading.py**: Comprehensive threading monitoring and debugging
+- **dev_commands.md**: Complete development workflow documentation
+- **Environment Variables**: Debug controls for threading and simulation modes
+
+### UI/UX Improvements
+- **Responsive Layout**: Improved container overflow handling
+- **Modern Styling**: Enhanced CSS with better visual hierarchy
+- **Color Differentiation**: Unique colors for each stock in multi-stock analysis
+- **Better Error Messages**: Clear feedback for various failure scenarios
 
 ## 🔧 Configuration Options
 
@@ -130,10 +185,30 @@ FinancialAgent/
 - `SERPER_API_KEY`: Optional, enables web search capabilities
 - `OPENAI_MODEL_NAME`: Default is `gpt-3.5-turbo`, can use `gpt-4` for better results
 
+### Development/Debug Variables
+- `DEBUG_THREADING`: Set to `true` to enable thread debugging output
+- `DISABLE_BACKGROUND_THREADS`: Set to `true` for synchronous analysis (UI testing)
+- `SIMULATE_ANALYSIS_RESULTS`: Set to `true` to use mock data for faster testing
+
+### Using Debug Features
+```bash
+# Enable threading debug output
+export DEBUG_THREADING=true
+
+# Run in UI-friendly mode (no background threads)
+export DISABLE_BACKGROUND_THREADS=true
+export SIMULATE_ANALYSIS_RESULTS=true
+
+# Start app with debugging
+source venv/bin/activate
+python app.py
+```
+
 ### Customization
 - Modify agent roles and goals in `agent_logic.py`
 - Adjust UI layout and styling in `app.py`
 - Add new analysis parameters or visualizations
+- Customize stock data periods and chart types
 
 ## 🚨 Important Notes
 
@@ -165,13 +240,39 @@ The application will run without valid API keys but show error messages. This al
 
 ## 🐛 Troubleshooting
 
+### Quick Setup Issues
+
+**Setup Script Not Executable**
+```bash
+chmod +x setup.sh
+./setup.sh
+```
+
+**Virtual Environment Issues**
+```bash
+# If venv gets corrupted, recreate it
+rm -rf venv
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+```
+
 ### Common Issues
 
 **Import Errors**
 ```bash
 # Ensure virtual environment is activated
-source financial_agent_env/bin/activate
+source venv/bin/activate
 pip install -r requirements.txt
+```
+
+**Yahoo Finance Data Issues**
+```bash
+# Update to latest yfinance version
+pip install --upgrade yfinance
+
+# Check if yfinance is working
+python -c "import yfinance as yf; print(yf.Ticker('AAPL').history(period='1d'))"
 ```
 
 **API Key Errors**
@@ -183,6 +284,19 @@ pip install -r requirements.txt
 - Use `gpt-3.5-turbo` for faster responses
 - Reduce agent verbosity in `agent_logic.py`
 - Consider caching for repeated analyses
+
+**Threading/Hot Reload Issues**
+```bash
+# Use debug mode for development
+export DEBUG_THREADING=true
+export DISABLE_BACKGROUND_THREADS=true
+python debug_threading.py  # Run threading diagnostics
+```
+
+### Getting Help
+- Check `dev_commands.md` for detailed development workflows
+- Use `debug_threading.py` for threading-related issues
+- Monitor app logs with `tail -f app.log`
 
 ## 📈 Comparison: Before vs After
 
