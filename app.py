@@ -4,8 +4,80 @@ from dash.dependencies import Input, Output, State
 from dash.exceptions import PreventUpdate
 import plotly.graph_objects as go
 import threading
+import concurrent.futures
 import time
+import signal
+import sys
+from functools import wraps
+
+# Enhanced thread management and error handling
+class SafeThreadManager:
+    def __init__(self):
+        self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=2)
+        self.active_futures = {}
+        self.lock = threading.Lock()
+    
+    def submit_analysis(self, task_id, func, *args, **kwargs):
+        """Submit analysis task with proper tracking and cleanup"""
+        with self.lock:
+            # Cancel any existing task with the same ID
+            if task_id in self.active_futures:
+                self.active_futures[task_id].cancel()
+                debug_print(f"Cancelled existing task: {task_id}")
+            
+            # Submit new task
+            future = self.executor.submit(func, *args, **kwargs)
+            self.active_futures[task_id] = future
+            debug_print(f"Submitted new task: {task_id}")
+            return future
+    
+    def is_running(self, task_id):
+        """Check if a task is currently running"""
+        with self.lock:
+            return task_id in self.active_futures and not self.active_futures[task_id].done()
+    
+    def cleanup_completed_tasks(self):
+        """Clean up completed tasks"""
+        with self.lock:
+            completed_tasks = [task_id for task_id, future in self.active_futures.items() if future.done()]
+            for task_id in completed_tasks:
+                del self.active_futures[task_id]
+            if completed_tasks:
+                debug_print(f"Cleaned up {len(completed_tasks)} completed tasks")
+    
+    def shutdown(self):
+        """Gracefully shutdown the thread pool"""
+        debug_print("Shutting down thread manager...")
+        self.executor.shutdown(wait=True)
+
+# Global thread manager instance
+thread_manager = SafeThreadManager()
+
+def safe_callback(func):
+    """Decorator to add error handling to callbacks"""
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except Exception as e:
+            print(f"ERROR in callback {func.__name__}: {str(e)}")
+            # Return safe defaults based on callback outputs
+            if hasattr(func, '__annotations__'):
+                return tuple(no_update for _ in range(len(func.__annotations__) - 1))
+            return no_update
+    return wrapper
+
+def graceful_shutdown_handler(sig, frame):
+    """Handle graceful shutdown"""
+    print('\nGracefully shutting down Financial Agent...')
+    thread_manager.shutdown()
+    sys.exit(0)
+
+# Register shutdown handlers
+signal.signal(signal.SIGINT, graceful_shutdown_handler)
+signal.signal(signal.SIGTERM, graceful_shutdown_handler)
 import os
+import random
 # Using the working agent logic import
 from agent_logic import run_crew_analysis
 import yfinance as yf
@@ -48,6 +120,75 @@ analysis_progress = {
     'message': 'Ready to start analysis',
     'result': ''
 }
+
+# Global variable to store original and translated reports
+report_storage = {
+    'original': '',
+    'translated': '',
+    'current_language': 'en'  # 'en' for English, 'es' for Spanish
+}
+
+def translate_to_spanish(text):
+    """Translate the analysis report to Spanish using OpenAI"""
+    try:
+        from langchain_openai import ChatOpenAI
+        import os
+        
+        print(f"DEBUG: Starting translation for text of length: {len(text)}")
+        
+        # Get the OpenAI API key from environment
+        openai_api_key = os.getenv('OPENAI_API_KEY')
+        model_name = os.getenv('OPENAI_MODEL_NAME', 'gpt-3.5-turbo')  # Use gpt-3.5-turbo for faster and cheaper translation
+        
+        if not openai_api_key:
+            print("DEBUG: OpenAI API key not found")
+            return "Error: OpenAI API key not found. Translation requires a valid OpenAI API key."
+        
+        if not openai_api_key.startswith('sk-'):
+            print("DEBUG: Invalid OpenAI API key format")
+            return "Error: Invalid OpenAI API key format. Please check your API key."
+        
+        print(f"DEBUG: Using model: {model_name}")
+        
+        # Initialize the OpenAI client
+        llm = ChatOpenAI(model=model_name, temperature=0.3, api_key=openai_api_key)
+        
+        # Create translation prompt
+        translation_prompt = f"""
+        You are a professional financial translator. Please translate the following financial analysis report from English to Spanish. 
+        
+        IMPORTANT INSTRUCTIONS:
+        - Maintain all financial terminology accuracy
+        - Keep all numbers, percentages, and monetary values exactly as they are
+        - Preserve the markdown formatting (headers, bullets, etc.)
+        - Use professional Spanish financial terminology
+        - Keep the structure and organization of the report identical
+        - Do not add any additional commentary or explanations
+        
+        TEXT TO TRANSLATE:
+        {text}
+        
+        SPANISH TRANSLATION:
+        """
+        
+        print("DEBUG: Sending translation request to OpenAI...")
+        
+        # Get the translation
+        response = llm.invoke(translation_prompt)
+        translated_text = response.content
+        
+        print(f"DEBUG: Translation completed. Result length: {len(translated_text)}")
+        
+        # Basic validation
+        if not translated_text or len(translated_text) < 10:
+            return "Error: Translation returned empty or too short result."
+        
+        return translated_text
+        
+    except Exception as e:
+        error_msg = f"Translation Error: {str(e)}"
+        print(f"DEBUG: Translation failed with error: {error_msg}")
+        return error_msg
 
 # Modern CSS styles - using external stylesheet with minimal inline overrides
 app.index_string = '''
@@ -456,6 +597,25 @@ main_page_layout = html.Div([
                     ]),
                     
                     html.Div([
+                        html.Div([
+                            html.Button(
+                                [html.I(className="fas fa-language", style={'marginRight': '0.5rem'}), 
+                                 "Translate to Spanish"],
+                                id='translate-button',
+                                className="translate-button",
+                                style={'marginBottom': '1rem', 'display': 'none'},
+                                n_clicks=0
+                            ),
+                            html.Button(
+                                [html.I(className="fas fa-undo", style={'marginRight': '0.5rem'}), 
+                                 "Show Original"],
+                                id='show-original-button',
+                                className="show-original-button",
+                                style={'marginBottom': '1rem', 'marginLeft': '0.5rem', 'display': 'none'},
+                                n_clicks=0
+                            )
+                        ], style={'textAlign': 'right'}),
+                        
                         dcc.Markdown(id='analysis-report-display', 
                                     children="Analysis results will appear here after running the AI agents.",
                                     className="analysis-report-content",
@@ -1048,10 +1208,9 @@ def run_agent_analysis_background(stock_ticker_input, initial_capital, risk_tole
             for name, ident, is_alive in threads_info['threads']:
                 debug_print(f"  - {name} (ID: {ident}, Alive: {is_alive})")
 
-# Callback to run financial analysis (real agent version)
+# Callback to run financial analysis (improved with thread management)
 @app.callback(
-    [Output('analysis-report-display', 'children'),
-     Output('agent-progress-display', 'children')],
+    Output('run-analysis-button', 'disabled'),  # Only control the button state
     [Input('run-analysis-button', 'n_clicks')],
     [State('stock-ticker-input', 'value'),
      State('initial-capital-input', 'value'),
@@ -1060,22 +1219,26 @@ def run_agent_analysis_background(stock_ticker_input, initial_capital, risk_tole
      State('news-impact-checklist', 'value')],
     prevent_initial_call=True
 )
+@safe_callback
 def run_financial_analysis(n_clicks, stock_ticker_input, initial_capital, risk_tolerance, strategy_preference, news_impact_checklist_value):
     global analysis_progress
     
     if not stock_ticker_input:
-        return no_update, "Error: Stock ticker(s) required. Please enter at least one stock symbol."
+        return no_update
 
     # Parse tickers
     tickers = [t.strip().upper() for t in stock_ticker_input.split(',') if t.strip()]
     if len(tickers) == 0:
-        return no_update, "Error: Please enter valid stock ticker(s)."
+        return no_update
 
     news_impact = True if news_impact_checklist_value and 'True' in news_impact_checklist_value else False
 
-    # Check if analysis is already running
-    if analysis_progress['status'] == 'running':
-        return analysis_progress['result'], "Analysis in progress... Please wait."
+    # Check if analysis is already running using thread manager
+    if thread_manager.is_running('analysis_task'):
+        return True  # Disable button while analysis is running
+    
+    # Clean up any completed tasks
+    thread_manager.cleanup_completed_tasks()
     
     # Debug: Log callback start
     debug_print(f"ANALYSIS CALLBACK TRIGGERED - Tickers: {tickers}")
@@ -1114,57 +1277,157 @@ def run_financial_analysis(n_clicks, stock_ticker_input, initial_capital, risk_t
 """
             analysis_progress['status'] = 'completed'
             analysis_progress['result'] = mock_result
-            return mock_result, "Synchronous mock analysis completed"
+            return False  # Re-enable button after analysis
         else:
             # Run real analysis synchronously (WARNING: This will block the UI!)
             debug_print("WARNING: Running real analysis synchronously - UI will be blocked!")
             run_agent_analysis_background(stock_ticker_input, initial_capital, risk_tolerance, strategy_preference, news_impact)
-            return analysis_progress['result'], "Synchronous analysis completed"
+            return False  # Re-enable button after analysis
     
     else:
-        # Normal background thread operation
-        debug_print("Starting background thread for analysis")
+        # Use improved thread manager for background analysis
+        debug_print("Starting managed background thread for analysis")
         
-        # Start background analysis
-        analysis_thread = threading.Thread(
-            target=run_agent_analysis_background,
-            args=(stock_ticker_input, initial_capital, risk_tolerance, strategy_preference, news_impact)
+        # Submit analysis task to thread manager
+        future = thread_manager.submit_analysis(
+            'analysis_task',
+            run_agent_analysis_background,
+            stock_ticker_input, initial_capital, risk_tolerance, strategy_preference, news_impact
         )
-        analysis_thread.daemon = True
         
-        # Debug: Option to comment out thread.start() for testing
-        # UNCOMMENT THE FOLLOWING LINE TO DISABLE BACKGROUND THREAD EXECUTION:
-        # debug_print("analysis_thread.start() COMMENTED OUT FOR DEBUGGING")
-        analysis_thread.start()
-        
-        debug_print(f"Background thread started with ID: {analysis_thread.ident}")
+        debug_print(f"Analysis task submitted to thread manager")
     
+    # Start analysis and disable button temporarily
     if len(tickers) == 1:
-        return f"Single stock analysis started for {tickers[0]}. Check progress above...", "Starting analysis..."
+        debug_print(f"Single stock analysis started for {tickers[0]}")
+        return True  # Disable button while analysis is running
     else:
-        return f"Multi-stock comparative analysis started for {len(tickers)} stocks: {', '.join(tickers[:3])}{'...' if len(tickers) > 3 else ''}. Check progress above...", "Starting multi-stock analysis..."
+        debug_print(f"Multi-stock analysis started for {len(tickers)} stocks")
+        return True  # Disable button while analysis is running
 
-# Callback to update progress display periodically
+# Unified callback to handle all report-related updates (FIXED: No more allow_duplicate=True conflicts)
 @app.callback(
-    [Output('analysis-report-display', 'children', allow_duplicate=True),
-     Output('agent-progress-display', 'children', allow_duplicate=True)],
-    [Input('progress-interval', 'n_intervals')],
-    [State('url', 'pathname')],
+    [Output('analysis-report-display', 'children'),
+     Output('agent-progress-display', 'children'),
+     Output('translate-button', 'style'),
+     Output('show-original-button', 'style')],
+    [Input('progress-interval', 'n_intervals'),
+     Input('translate-button', 'n_clicks'),
+     Input('show-original-button', 'n_clicks')],
+    [State('url', 'pathname'),
+     State('analysis-report-display', 'children')],
     prevent_initial_call=True
 )
-def update_analysis_progress(n_intervals, pathname):
-    global analysis_progress
+def unified_report_manager(n_intervals, translate_clicks, original_clicks, pathname, current_report):
+    """
+    Unified callback to prevent callback conflicts and circular dependencies.
+    This replaces multiple callbacks with allow_duplicate=True that were causing crashes.
+    """
+    global analysis_progress, report_storage
     
-    # Only update if we're on the main page and analysis is running or completed
-    if pathname == '/main' and analysis_progress['status'] in ['running', 'completed', 'error']:
-        if analysis_progress['status'] == 'completed':
-            return analysis_progress['result'], analysis_progress['message']
-        elif analysis_progress['status'] == 'error':
-            return f"**Error:** {analysis_progress['result']}", analysis_progress['message']
-        else:  # running
-            return "Analysis in progress... Please wait for the agents to complete their work.", analysis_progress['message']
+    # Determine what triggered this callback
+    ctx = dash.callback_context
+    if not ctx.triggered:
+        return no_update, no_update, no_update, no_update
     
-    return no_update, no_update
+    trigger_id = ctx.triggered[0]['prop_id'].split('.')[0]
+    
+    # Default button styles
+    hide_style = {'marginBottom': '1rem', 'display': 'none'}
+    translate_show_style = {'marginBottom': '1rem', 'display': 'inline-block'}
+    original_show_style = {'marginBottom': '1rem', 'marginLeft': '0.5rem', 'display': 'inline-block'}
+    
+    try:
+        # Handle progress interval updates
+        if trigger_id == 'progress-interval':
+            # Only update if we're on the main page and analysis is running or completed
+            if pathname == '/main' and analysis_progress['status'] in ['running', 'completed', 'error']:
+                if analysis_progress['status'] == 'completed':
+                    # Store the original report if not already stored
+                    if not report_storage['original']:
+                        report_storage['original'] = analysis_progress['result']
+                        report_storage['current_language'] = 'en'
+                    
+                    # Show the appropriate report based on current language
+                    if report_storage['current_language'] == 'es' and report_storage['translated']:
+                        # Show translated version if user is viewing translation
+                        return report_storage['translated'], analysis_progress['message'], hide_style, original_show_style
+                    else:
+                        # Show original version
+                        return analysis_progress['result'], analysis_progress['message'], translate_show_style, hide_style
+                elif analysis_progress['status'] == 'error':
+                    # Hide buttons on error
+                    return f"**Error:** {analysis_progress['result']}", analysis_progress['message'], hide_style, hide_style
+                else:  # running
+                    # Hide buttons while running
+                    return "Analysis in progress... Please wait for the agents to complete their work.", analysis_progress['message'], hide_style, hide_style
+        
+        # Handle translate button click
+        elif trigger_id == 'translate-button':
+            print(f"DEBUG: Translate button clicked. translate_clicks={translate_clicks}, original exists={bool(report_storage['original'])}, current_language={report_storage['current_language']}")
+            
+            if translate_clicks and translate_clicks > 0 and report_storage['original']:
+                # Only translate if we have an original report and it's not already translated
+                if report_storage['current_language'] == 'en':
+                    print("DEBUG: Starting translation...")
+                    
+                    translated = translate_to_spanish(report_storage['original'])
+                    print(f"DEBUG: Translation result length: {len(translated) if translated else 0}")
+                    print(f"DEBUG: Translation starts with: {translated[:50] if translated else 'None'}...")
+                    
+                    if translated and not translated.startswith("Translation Error") and not translated.startswith("Error:"):
+                        report_storage['translated'] = translated
+                        report_storage['current_language'] = 'es'
+                        
+                        print("DEBUG: Translation successful, updating UI...")
+                        
+                        # Update button visibility
+                        success_msg = html.Div([
+                            html.I(className="fas fa-check-circle", style={'marginRight': '0.5rem', 'color': 'var(--success-color)'}),
+                            "Translation completed successfully!"
+                        ], className="status-indicator status-success")
+                        
+                        print(f"DEBUG: Returning translated content of length: {len(translated)}")
+                        return translated, success_msg, hide_style, original_show_style
+                    else:
+                        # Translation failed, show error
+                        print(f"DEBUG: Translation failed: {translated}")
+                        error_msg = f"**Translation Failed:** {translated}"
+                        error_display = html.Div([
+                            html.I(className="fas fa-exclamation-triangle", style={'marginRight': '0.5rem', 'color': 'var(--error-color)'}),
+                            "Translation failed. Please try again."
+                        ], className="status-indicator status-error")
+                        
+                        return error_msg, error_display, translate_show_style, hide_style
+                else:
+                    # Already translated, show the existing translation
+                    print(f"DEBUG: Already translated, showing existing translation of length: {len(report_storage['translated']) if report_storage['translated'] else 0}")
+                    if report_storage['translated']:
+                        return report_storage['translated'], analysis_progress['message'], hide_style, original_show_style
+                    else:
+                        print("DEBUG: No existing translation found, keeping current state")
+                        return no_update, no_update, no_update, no_update
+            else:
+                # Debug: show why translation didn't trigger
+                debug_msg = f"DEBUG: Translation not triggered. clicks={translate_clicks}, has_original={bool(report_storage['original'])}"
+                print(debug_msg)
+                return no_update, no_update, no_update, no_update
+        
+        # Handle show original button click
+        elif trigger_id == 'show-original-button':
+            if original_clicks and report_storage['original']:
+                # Switch back to original report
+                report_storage['current_language'] = 'en'
+                
+                # Update button visibility
+                return report_storage['original'], analysis_progress['message'], translate_show_style, hide_style
+        
+        return no_update, no_update, no_update, no_update
+        
+    except Exception as e:
+        # Safe error handling to prevent callback crashes
+        print(f"Error in unified_report_manager: {str(e)}")
+        return f"**Error:** An error occurred while updating the report.", "Error in report manager", hide_style, hide_style
 
 # Theme toggle callback
 app.clientside_callback(
